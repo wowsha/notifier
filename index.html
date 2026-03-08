@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Weather Notifier • Live Updates</title>
+  <title>Custom Live Notifier</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background: linear-gradient(135deg, #0f172a, #1e2937); }
@@ -11,24 +11,36 @@
 </head>
 <body class="min-h-screen text-white flex items-center justify-center">
   <div class="max-w-md w-full mx-auto bg-slate-900 rounded-3xl shadow-2xl p-8">
-    <h1 class="text-4xl font-bold text-center mb-2">☀️ Live Weather Notifier</h1>
-    <p class="text-center text-slate-400 mb-8">Updates every 5 seconds (tab must stay open)</p>
+    <h1 class="text-4xl font-bold text-center mb-2">📢 Custom Live Notifier</h1>
+    <p class="text-center text-slate-400 mb-8">Edit text • Click opens your website • Every 5s</p>
 
     <div class="space-y-6">
       <div>
-        <label class="block text-sm font-medium mb-2">Your City</label>
-        <input id="city" type="text" value="London" 
+        <label class="block text-sm font-medium mb-2">Notification Title</label>
+        <input id="title" type="text" value="Free Offer!" 
                class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
       </div>
 
-      <button onclick="startLiveUpdates()" 
-              class="w-full bg-green-600 hover:bg-green-500 transition py-5 rounded-2xl text-xl font-semibold flex items-center justify-center gap-3">
-        Start Live Weather Notifications
+      <div>
+        <label class="block text-sm font-medium mb-2">Notification Message</label>
+        <textarea id="body" rows="3" 
+                  class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">Click here for instant access!</textarea>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-2">Website to open on click</label>
+        <input id="url" type="text" value="https://example.com" 
+               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <button onclick="startLiveNotifications()" 
+              class="w-full bg-green-600 hover:bg-green-500 transition py-5 rounded-2xl text-xl font-semibold">
+        Start Sending Notifications
       </button>
 
-      <button onclick="stopUpdates()" id="stopBtn"
+      <button onclick="stopNotifications()" id="stopBtn"
               class="hidden w-full bg-red-600 hover:bg-red-500 transition py-5 rounded-2xl text-xl font-semibold">
-        Stop Updates
+        Stop Notifications
       </button>
 
       <div id="status" class="text-center text-sm min-h-[48px]"></div>
@@ -36,99 +48,63 @@
   </div>
 
   <script>
-    let updateInterval = null;
+    let intervalId = null;
 
-    async function fetchAndSendWeather(city) {
-      const status = document.getElementById('status');
-      try {
-        // Get coordinates
-        const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&format=json`);
-        const geoData = await geo.json();
-        if (!geoData.results?.[0]) throw new Error('City not found');
-        const { latitude, longitude, name } = geoData.results[0];
+    async function sendNotification() {
+      const title = document.getElementById('title').value.trim() || 'Default Title';
+      const body = document.getElementById('body').value.trim() || 'Default message';
+      const url = document.getElementById('url').value.trim() || 'https://example.com';
 
-        // Get current weather
-        const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`
-        );
-        const w = await weatherRes.json();
-        const current = w.current_weather;
-
-        const conditionMap = { /* same as before */ 
-          0: "Clear sky ☀️", 1: "Mainly clear 🌤️", 2: "Partly cloudy ⛅", 3: "Overcast ☁️",
-          45: "Fog 🌫️", 48: "Depositing rime fog 🌫️",
-          51: "Light drizzle 🌦️", 53: "Moderate drizzle 🌧️", 55: "Dense drizzle 🌧️",
-          61: "Slight rain 🌧️", 63: "Moderate rain 🌧️", 65: "Heavy rain 🌧️",
-          71: "Slight snow ❄️", 73: "Moderate snow ❄️", 75: "Heavy snow ❄️",
-          80: "Rain showers 🌦️", 81: "Moderate rain showers 🌧️", 82: "Violent rain showers ⛈️",
-          95: "Thunderstorm ⛈️", 96: "Thunderstorm with hail ⛈️", 99: "Thunderstorm with heavy hail ⛈️"
-        };
-        const condition = conditionMap[current.weathercode] || `Code ${current.weathercode}`;
-
-        const title = `Weather in ${name}`;
-        const body = `${condition}\n${current.temperature}°C • Wind: ${current.windspeed} km/h`;
-
-        // Send to Service Worker
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'SHOW_NOTIFICATION',
-            title: title,
-            body: body
-          });
-        }
-
-        status.innerHTML = `✅ Updated • ${name} • ${new Date().toLocaleTimeString()}<br><small>Every 5 seconds (keep tab open)</small>`;
-      } catch (e) {
-        status.innerHTML = `❌ Error: ${e.message}`;
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title: title,
+          body: body,
+          url: url
+        });
       }
     }
 
-    async function startLiveUpdates() {
-      const city = document.getElementById('city').value.trim() || 'London';
+    async function startLiveNotifications() {
       const status = document.getElementById('status');
       const stopBtn = document.getElementById('stopBtn');
 
-      // Permission & Service Worker
-      if (Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
       if (Notification.permission !== 'granted') {
-        status.innerHTML = '❌ Please allow notifications';
-        return;
-      }
-
-      if (!('serviceWorker' in navigator)) {
-        status.innerHTML = '❌ Service Workers not supported';
-        return;
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          status.innerHTML = '❌ Please allow notifications in your browser';
+          return;
+        }
       }
 
       await navigator.serviceWorker.register('sw.js');
       await navigator.serviceWorker.ready;
 
-      status.innerHTML = '✅ Service Worker ready • Starting live updates...';
+      status.innerHTML = '✅ Service Worker ready • Sending every 5 seconds...';
 
-      // First update immediately
-      await fetchAndSendWeather(city);
+      // Send first one immediately
+      await sendNotification();
 
-      // Then every 5 seconds
-      if (updateInterval) clearInterval(updateInterval);
-      updateInterval = setInterval(() => fetchAndSendWeather(city), 5000);
+      // Then every 5 seconds (change 5000 to 1000 for every 1 second)
+      if (intervalId) clearInterval(intervalId);
+      intervalId = setInterval(sendNotification, 5000);
 
       stopBtn.classList.remove('hidden');
-      status.innerHTML += '<br><small>Notifications will replace each other (no spam)</small>';
     }
 
-    function stopUpdates() {
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
+    function stopNotifications() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
       }
       document.getElementById('stopBtn').classList.add('hidden');
-      document.getElementById('status').innerHTML = '⏹️ Updates stopped';
+      document.getElementById('status').innerHTML = '⏹️ Stopped';
     }
 
-    // Auto-register SW
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    // Auto-register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
   </script>
 </body>
 </html>
