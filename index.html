@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Notifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(135deg, #0f172a, #1e2937); }
+  </style>
+</head>
+<body class="min-h-screen text-white flex items-center justify-center">
+  <div class="max-w-md w-full mx-auto bg-slate-900 rounded-3xl shadow-2xl p-8">
+    <h1 class="text-4xl font-bold text-center mb-2">☀️ Weather Notifier</h1>
+    <p class="text-center text-slate-400 mb-8">Service Worker Demo</p>
+
+    <div class="space-y-6">
+      <div>
+        <label class="block text-sm font-medium mb-2">Your City</label>
+        <input id="city" type="text" value="London" 
+               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <button onclick="enableNotifications()" 
+              class="w-full bg-blue-600 hover:bg-blue-500 transition py-5 rounded-2xl text-xl font-semibold flex items-center justify-center gap-3">
+        <span>Enable Weather Notifications</span>
+      </button>
+
+      <div id="status" class="text-center text-sm min-h-[24px]"></div>
+    </div>
+  </div>
+
+  <script>
+    async function enableNotifications() {
+      const status = document.getElementById('status');
+      const city = document.getElementById('city').value.trim() || 'London';
+
+      // 1. Ask for notification permission
+      if (Notification.permission === 'default') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          status.innerHTML = '❌ Notification permission denied';
+          return;
+        }
+      }
+      if (Notification.permission === 'denied') {
+        status.innerHTML = '❌ Notifications blocked. Please allow them in site settings.';
+        return;
+      }
+
+      // 2. Register Service Worker
+      if (!('serviceWorker' in navigator)) {
+        status.innerHTML = '❌ Service Workers not supported';
+        return;
+      }
+      const reg = await navigator.serviceWorker.register('sw.js');
+      await navigator.serviceWorker.ready;
+
+      status.innerHTML = '✅ Service Worker active • Fetching weather...';
+
+      // 3. Get real weather
+      try {
+        // Geocode city → lat/long
+        const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&format=json`);
+        const geoData = await geo.json();
+        if (!geoData.results?.[0]) throw new Error('City not found');
+        
+        const { latitude, longitude, name } = geoData.results[0];
+
+        // Get current weather
+        const weatherRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`
+        );
+        const w = await weatherRes.json();
+        const current = w.current_weather;
+
+        const conditionMap = {
+          0: "Clear sky ☀️", 1: "Mainly clear 🌤️", 2: "Partly cloudy ⛅", 3: "Overcast ☁️",
+          45: "Fog 🌫️", 48: "Depositing rime fog 🌫️",
+          51: "Light drizzle 🌦️", 53: "Moderate drizzle 🌧️", 55: "Dense drizzle 🌧️",
+          61: "Slight rain 🌧️", 63: "Moderate rain 🌧️", 65: "Heavy rain 🌧️",
+          71: "Slight snow ❄️", 73: "Moderate snow ❄️", 75: "Heavy snow ❄️",
+          80: "Rain showers 🌦️", 81: "Moderate rain showers 🌧️", 82: "Violent rain showers ⛈️",
+          95: "Thunderstorm ⛈️", 96: "Thunderstorm with hail ⛈️", 99: "Thunderstorm with heavy hail ⛈️"
+        };
+
+        const condition = conditionMap[current.weathercode] || `Weather code ${current.weathercode}`;
+
+        const title = `Weather in ${name}`;
+        const body = `${condition}\n${current.temperature}°C\nWind: ${current.windspeed} km/h`;
+
+        // 4. Send message to Service Worker → it shows the notification
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SHOW_NOTIFICATION',
+            title: title,
+            body: body
+          });
+        } else {
+          // Fallback for first load
+          reg.showNotification(title, { body });
+        }
+
+        status.innerHTML = `✅ Notification sent by Service Worker!<br><small>Weather for ${name}</small>`;
+      } catch (e) {
+        status.innerHTML = `❌ Error: ${e.message}`;
+      }
+    }
+
+    // Auto-register SW on page load
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
