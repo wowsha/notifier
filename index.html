@@ -12,7 +12,7 @@
 <body class="min-h-screen text-white flex items-center justify-center">
   <div class="max-w-md w-full mx-auto bg-slate-900 rounded-3xl shadow-2xl p-8">
     <h1 class="text-4xl font-bold text-center mb-2">📢 Custom Live Notifier</h1>
-    <p class="text-center text-slate-400 mb-8">Edit everything • Click opens your website</p>
+    <p class="text-center text-slate-400 mb-8">Edit everything • Generate shareable link</p>
 
     <div class="space-y-6">
       <div>
@@ -37,13 +37,30 @@
         <label class="block text-sm font-medium mb-2">Interval between notifications (milliseconds)</label>
         <input id="interval" type="number" value="5000" min="1" step="1"
                class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <p class="text-xs text-slate-500 mt-1">1 = 1ms • 1000 = 1 second • 189298982 = ~2 days</p>
+        <p class="text-xs text-slate-500 mt-1">1 = 1ms • 1000 = 1 second • any number works</p>
       </div>
 
       <button onclick="startLiveNotifications()" 
               class="w-full bg-green-600 hover:bg-green-500 transition py-5 rounded-2xl text-xl font-semibold">
         Start Sending Notifications
       </button>
+
+      <button onclick="generateShareableLink()" 
+              class="w-full bg-purple-600 hover:bg-purple-500 transition py-5 rounded-2xl text-xl font-semibold">
+        Generate Shareable Link
+      </button>
+
+      <div id="shareResult" class="hidden bg-slate-800 rounded-2xl p-5 text-sm">
+        <p class="font-medium mb-3 text-purple-400">Your shareable link (anyone can open it):</p>
+        <div class="flex gap-2">
+          <input id="shareUrlInput" type="text" readonly 
+                 class="flex-1 bg-slate-900 rounded-2xl px-4 py-3 text-xs font-mono break-all">
+          <button onclick="copyShareLink()" 
+                  class="bg-blue-600 hover:bg-blue-500 px-8 rounded-2xl text-sm font-medium whitespace-nowrap">
+            Copy
+          </button>
+        </div>
+      </div>
 
       <button onclick="stopNotifications()" id="stopBtn"
               class="hidden w-full bg-red-600 hover:bg-red-500 transition py-5 rounded-2xl text-xl font-semibold">
@@ -55,30 +72,87 @@
   </div>
 
   <script>
+    let isSilentMode = false;
+    let silentConfig = null;
     let intervalId = null;
 
+    // ===================== SILENT MODE (white page + auto-run) =====================
+    // Runs instantly when ?config=... is in the URL
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const configB64 = params.get('config');
+      if (!configB64) return;
+
+      try {
+        const jsonStr = decodeURIComponent(atob(configB64));
+        const config = JSON.parse(jsonStr);
+
+        isSilentMode = true;
+        silentConfig = config;
+
+        // Make the entire page completely white and hide the editor
+        document.body.style.background = '#ffffff';
+        document.body.style.margin = '0';
+        document.body.style.padding = '0';
+        const mainPanel = document.querySelector('.max-w-md');
+        if (mainPanel) mainPanel.style.display = 'none';
+
+        // Auto-start (just permission + notifications)
+        await startSilentMode(config);
+      } catch (e) {
+        console.error('Bad config link');
+      }
+    })();
+
     async function sendNotification() {
-      const title = document.getElementById('title').value.trim() || 'Default Title';
-      const body = document.getElementById('body').value.trim() || 'Default message';
-      const url = document.getElementById('url').value.trim() || 'https://example.com';
+      let title, bodyText, urlToOpen;
+
+      if (isSilentMode && silentConfig) {
+        title = silentConfig.title || 'Default Title';
+        bodyText = silentConfig.body || 'Default message';
+        urlToOpen = silentConfig.url || 'https://example.com';
+      } else {
+        title = (document.getElementById('title')?.value || '').trim() || 'Default Title';
+        bodyText = (document.getElementById('body')?.value || '').trim() || 'Default message';
+        urlToOpen = (document.getElementById('url')?.value || '').trim() || 'https://example.com';
+      }
 
       if (navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: 'SHOW_NOTIFICATION',
           title: title,
-          body: body,
-          url: url
+          body: bodyText,
+          url: urlToOpen
         });
       }
     }
 
+    async function startSilentMode(config) {
+      // Request permission (browser will show the popup)
+      if (Notification.permission !== 'granted') {
+        await Notification.requestPermission();
+        if (Notification.permission !== 'granted') return;
+      }
+
+      await navigator.serviceWorker.register('sw.js');
+      await navigator.serviceWorker.ready;
+
+      // First notification immediately
+      await sendNotification();
+
+      // Then repeat at exact user interval
+      const intervalMs = Math.max(1, parseInt(config.interval) || 5000);
+      if (intervalId) clearInterval(intervalId);
+      intervalId = setInterval(sendNotification, intervalMs);
+    }
+
+    // ===================== NORMAL EDITOR MODE =====================
     async function startLiveNotifications() {
+      isSilentMode = false;
       const status = document.getElementById('status');
       const stopBtn = document.getElementById('stopBtn');
       const intervalInput = document.getElementById('interval');
       let intervalMs = parseInt(intervalInput.value) || 5000;
-
-      // Force minimum 1ms as requested
       if (intervalMs < 1) intervalMs = 1;
 
       if (Notification.permission !== 'granted') {
@@ -92,12 +166,9 @@
       await navigator.serviceWorker.register('sw.js');
       await navigator.serviceWorker.ready;
 
-      status.innerHTML = `✅ Service Worker ready • Sending every ${intervalMs}ms...`;
+      status.innerHTML = `✅ Sending every ${intervalMs}ms...`;
 
-      // First notification immediately
-      await sendNotification();
-
-      // Start repeating at exact user interval
+      await sendNotification(); // first one
       if (intervalId) clearInterval(intervalId);
       intervalId = setInterval(sendNotification, intervalMs);
 
@@ -109,11 +180,47 @@
         clearInterval(intervalId);
         intervalId = null;
       }
-      document.getElementById('stopBtn').classList.add('hidden');
-      document.getElementById('status').innerHTML = '⏹️ Stopped';
+      const stopBtn = document.getElementById('stopBtn');
+      if (stopBtn) stopBtn.classList.add('hidden');
+      const status = document.getElementById('status');
+      if (status) status.innerHTML = '⏹️ Stopped';
     }
 
-    // Auto-register service worker
+    function generateShareableLink() {
+      if (isSilentMode) return;
+
+      const config = {
+        title: (document.getElementById('title').value || '').trim(),
+        body: (document.getElementById('body').value || '').trim(),
+        url: (document.getElementById('url').value || '').trim(),
+        interval: parseInt(document.getElementById('interval').value) || 5000
+      };
+
+      const jsonStr = JSON.stringify(config);
+      const base64 = btoa(encodeURIComponent(jsonStr));
+
+      // Clean base URL (removes any existing ?config)
+      const baseUrl = window.location.href.split('?')[0];
+      const shareUrl = `${baseUrl}?config=${base64}`;
+
+      const resultDiv = document.getElementById('shareResult');
+      const input = document.getElementById('shareUrlInput');
+      input.value = shareUrl;
+      resultDiv.classList.remove('hidden');
+    }
+
+    function copyShareLink() {
+      const input = document.getElementById('shareUrlInput');
+      if (!input) return;
+      navigator.clipboard.writeText(input.value).then(() => {
+        const btn = document.querySelector('#shareResult button');
+        const originalText = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => { btn.textContent = originalText; }, 2000);
+      });
+    }
+
+    // Auto-register service worker for normal mode
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
