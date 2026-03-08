@@ -3,72 +3,378 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Custom Live Notifier</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>LivePing — Editorial Notification Engine</title>
+  <!-- Fonts: Syne for bold headlines, JetBrains Mono for technical data -->
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
-    body { background: linear-gradient(135deg, #0f172a, #1e2937); }
+    :root {
+      --bg: #050505;
+      --paper: #ffffff;
+      --accent: #e1ff00; /* Neon Sulfur */
+      --accent-dark: #b8cc00;
+      --text-main: #ffffff;
+      --text-dim: #888888;
+      --border-color: #222222;
+      --glass: rgba(255, 255, 255, 0.03);
+      --transition: 0.4s cubic-bezier(0.2, 1, 0.3, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background-color: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    /* Noise Texture Overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3ExternalSVG%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+      opacity: 0.04;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Abstract Background Shapes */
+    .bg-blobs {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      filter: blur(80px);
+      opacity: 0.4;
+    }
+    .blob-1 {
+      position: absolute;
+      top: -10%; left: -10%;
+      width: 40vw; height: 40vw;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 4rem;
+      align-items: start;
+      animation: reveal 1s var(--transition);
+    }
+
+    @keyframes reveal {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Left Side: Branding */
+    .brand-section {
+      position: sticky;
+      top: 2rem;
+    }
+
+    .brand-tag {
+      font-weight: 700;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3em;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(4rem, 8vw, 6rem);
+      font-weight: 800;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+    }
+
+    .brand-description {
+      color: var(--text-dim);
+      font-size: 1rem;
+      max-width: 320px;
+      border-left: 2px solid var(--accent);
+      padding-left: 1.5rem;
+    }
+
+    /* Right Side: Form Card */
+    .editor-card {
+      background: var(--glass);
+      border: 1px solid var(--border-color);
+      padding: 3rem;
+      position: relative;
+      backdrop-filter: blur(10px);
+    }
+
+    .editor-card::after {
+      content: "FORM_V2.0";
+      position: absolute;
+      top: 1rem; right: 1rem;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+    }
+
+    .form-group {
+      margin-bottom: 2rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+    }
+
+    input[type="text"], 
+    input[type="number"], 
+    textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 0;
+      font-family: inherit;
+      font-size: 1.1rem;
+      color: var(--text-main);
+      outline: none;
+      transition: var(--transition);
+    }
+
+    input:focus, textarea:focus {
+      border-bottom-color: var(--accent);
+    }
+
+    .hint {
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-top: 0.5rem;
+      display: block;
+    }
+
+    /* Actions */
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 3rem;
+    }
+
+    .btn {
+      padding: 1.25rem;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .btn-primary:hover {
+      background: var(--paper);
+      transform: translateY(-2px);
+    }
+
+    .btn-outline {
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      background: transparent;
+    }
+
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-stop {
+      grid-column: span 2;
+      background: #ff3344;
+      color: white;
+      display: none;
+    }
+
+    .btn-stop.visible { display: flex; }
+
+    /* Share Section */
+    #shareResult {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px dashed var(--border-color);
+      display: none;
+    }
+    #shareResult.visible { display: block; }
+
+    .share-box {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .share-box input {
+      flex: 1;
+      font-size: 0.7rem;
+      padding: 0.5rem;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border-color);
+      color: var(--text-dim);
+    }
+
+    #status {
+      margin-top: 1.5rem;
+      font-size: 0.7rem;
+      color: var(--accent);
+      text-align: center;
+      min-height: 1em;
+    }
+
+    /* Silent Mode / Success View */
+    #success-view {
+      display: none;
+      text-align: center;
+      animation: fadeIn 1s var(--transition);
+      max-width: 600px;
+    }
+
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      background: var(--accent);
+      border-radius: 50%;
+      margin: 0 auto 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--bg);
+    }
+
+    .success-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 3rem;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      color: var(--bg);
+    }
+
+    .success-sub {
+      color: #666;
+      font-size: 1.1rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 850px) {
+      .container {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+      .brand-section { position: static; }
+      h1 { font-size: 4rem; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
   </style>
 </head>
-<body class="min-h-screen text-white flex items-center justify-center">
-  <div class="max-w-md w-full mx-auto bg-slate-900 rounded-3xl shadow-2xl p-8">
-    <h1 class="text-4xl font-bold text-center mb-2">📢 Custom Live Notifier</h1>
-    <p class="text-center text-slate-400 mb-8">Edit everything • Generate shareable link</p>
+<body>
 
-    <div class="space-y-6">
-      <div>
-        <label class="block text-sm font-medium mb-2">Notification Title</label>
-        <input id="title" type="text" value="Free Offer!" 
-               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+  <div class="bg-blobs">
+    <div class="blob-1"></div>
+  </div>
+
+  <!-- EDITOR INTERFACE -->
+  <div class="container" id="main-interface">
+    <div class="brand-section">
+      <span class="brand-tag">Real-time Delivery</span>
+      <h1>Live<br>Ping.</h1>
+      <p class="brand-description">
+        Broadcast system-level notifications directly to any device via browser hooks. Configure once, deploy anywhere.
+      </p>
+    </div>
+
+    <div class="editor-card">
+      <div class="form-group">
+        <label>01 // Notification Title</label>
+        <input id="title" type="text" value="System Alert" placeholder="E.g. New Transaction">
       </div>
 
-      <div>
-        <label class="block text-sm font-medium mb-2">Notification Message</label>
-        <textarea id="body" rows="3" 
-                  class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">Click here for instant access!</textarea>
+      <div class="form-group">
+        <label>02 // Message Content</label>
+        <textarea id="body" rows="2" placeholder="The core message payload...">A new secure event has been detected.</textarea>
       </div>
 
-      <div>
-        <label class="block text-sm font-medium mb-2">Website to open on click</label>
-        <input id="url" type="text" value="https://example.com" 
-               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div class="form-group">
+        <label>03 // Destination URL</label>
+        <input id="url" type="text" value="https://google.com" placeholder="https://...">
       </div>
 
-      <div>
-        <label class="block text-sm font-medium mb-2">Interval between notifications (milliseconds)</label>
-        <input id="interval" type="number" value="5000" min="1" step="1"
-               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <p class="text-xs text-slate-500 mt-1">1 = 1ms • 1000 = 1 second • any number works</p>
+      <div class="form-group">
+        <label>04 // Frequency (ms)</label>
+        <input id="interval" type="number" value="10000" min="500">
+        <span class="hint">Recommended: 10000ms (10 seconds)</span>
       </div>
 
-      <button onclick="startLiveNotifications()" 
-              class="w-full bg-green-600 hover:bg-green-500 transition py-5 rounded-2xl text-xl font-semibold">
-        Start Sending Notifications
-      </button>
+      <div class="action-grid">
+        <button class="btn btn-primary" onclick="startLiveNotifications()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 3l14 9-14 9V3z"/></svg>
+          Launch
+        </button>
+        <button class="btn btn-outline" onclick="generateShareableLink()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          Link
+        </button>
+        <button id="stopBtn" class="btn btn-stop" onclick="stopNotifications()">
+          Stop Broadcast
+        </button>
+      </div>
 
-      <button onclick="generateShareableLink()" 
-              class="w-full bg-purple-600 hover:bg-purple-500 transition py-5 rounded-2xl text-xl font-semibold">
-        Generate Shareable Link
-      </button>
+      <div id="status"></div>
 
-      <div id="shareResult" class="hidden bg-slate-800 rounded-2xl p-5 text-sm">
-        <p class="font-medium mb-3 text-purple-400">Your shareable link (anyone can open it):</p>
-        <div class="flex gap-2">
-          <input id="shareUrlInput" type="text" readonly 
-                 class="flex-1 bg-slate-900 rounded-2xl px-4 py-3 text-xs font-mono break-all">
-          <button onclick="copyShareLink()" 
-                  class="bg-blue-600 hover:bg-blue-500 px-8 rounded-2xl text-sm font-medium whitespace-nowrap">
-            Copy
-          </button>
+      <div id="shareResult">
+        <label style="font-size: 0.6rem; color: var(--accent)">LINK ENCRYPTED & READY</label>
+        <div class="share-box">
+          <input id="shareUrlInput" type="text" readonly>
+          <button class="btn btn-primary" style="padding: 0.5rem 1rem;" onclick="copyShareLink()">Copy</button>
         </div>
       </div>
-
-      <button onclick="stopNotifications()" id="stopBtn"
-              class="hidden w-full bg-red-600 hover:bg-red-500 transition py-5 rounded-2xl text-xl font-semibold">
-        Stop Notifications
-      </button>
-
-      <div id="status" class="text-center text-sm min-h-[48px]"></div>
     </div>
+  </div>
+
+  <!-- SILENT / THANK YOU VIEW -->
+  <div id="success-view">
+    <div class="success-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </div>
+    <h2 class="success-title">Connected.</h2>
+    <p class="success-sub">You have successfully signed up for <br><strong id="notif-name-display" style="color: #000;">"Notification"</strong></p>
+    <p style="margin-top: 2rem; font-size: 0.7rem; color: #999; text-transform: uppercase; letter-spacing: 0.2em;">Listening for incoming pings...</p>
   </div>
 
   <script>
@@ -76,8 +382,7 @@
     let silentConfig = null;
     let intervalId = null;
 
-    // ===================== SILENT MODE (white page + auto-run) =====================
-    // Runs instantly when ?config=... is in the URL
+    // Initialization
     (async () => {
       const params = new URLSearchParams(window.location.search);
       const configB64 = params.get('config');
@@ -90,17 +395,19 @@
         isSilentMode = true;
         silentConfig = config;
 
-        // Make the entire page completely white and hide the editor
+        // Visual Switch to "Thank You" White Page
         document.body.style.background = '#ffffff';
-        document.body.style.margin = '0';
-        document.body.style.padding = '0';
-        const mainPanel = document.querySelector('.max-w-md');
-        if (mainPanel) mainPanel.style.display = 'none';
+        document.body.style.color = '#000000';
+        document.getElementById('main-interface').style.display = 'none';
+        document.querySelector('.bg-blobs').style.display = 'none';
+        
+        const successView = document.getElementById('success-view');
+        successView.style.display = 'block';
+        document.getElementById('notif-name-display').textContent = config.title || "Notification";
 
-        // Auto-start (just permission + notifications)
         await startSilentMode(config);
       } catch (e) {
-        console.error('Bad config link');
+        console.error('Invalid Configuration');
       }
     })();
 
@@ -108,16 +415,16 @@
       let title, bodyText, urlToOpen;
 
       if (isSilentMode && silentConfig) {
-        title = silentConfig.title || 'Default Title';
-        bodyText = silentConfig.body || 'Default message';
+        title = silentConfig.title || 'LivePing';
+        bodyText = silentConfig.body || 'New notification received';
         urlToOpen = silentConfig.url || 'https://example.com';
       } else {
-        title = (document.getElementById('title')?.value || '').trim() || 'Default Title';
-        bodyText = (document.getElementById('body')?.value || '').trim() || 'Default message';
-        urlToOpen = (document.getElementById('url')?.value || '').trim() || 'https://example.com';
+        title = document.getElementById('title').value.trim() || 'LivePing';
+        bodyText = document.getElementById('body').value.trim() || 'New notification received';
+        urlToOpen = document.getElementById('url').value.trim() || 'https://example.com';
       }
 
-      if (navigator.serviceWorker.controller) {
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({
           type: 'SHOW_NOTIFICATION',
           title: title,
@@ -128,101 +435,75 @@
     }
 
     async function startSilentMode(config) {
-      // Request permission (browser will show the popup)
       if (Notification.permission !== 'granted') {
         await Notification.requestPermission();
-        if (Notification.permission !== 'granted') return;
       }
-
-      await navigator.serviceWorker.register('sw.js');
-      await navigator.serviceWorker.ready;
-
-      // First notification immediately
-      await sendNotification();
-
-      // Then repeat at exact user interval
-      const intervalMs = Math.max(1, parseInt(config.interval) || 5000);
-      if (intervalId) clearInterval(intervalId);
-      intervalId = setInterval(sendNotification, intervalMs);
+      
+      // Attempt registration (assumes sw.js exists in root)
+      try {
+        await navigator.serviceWorker.register('sw.js');
+        await navigator.serviceWorker.ready;
+        await sendNotification();
+        const intervalMs = Math.max(500, parseInt(config.interval) || 10000);
+        intervalId = setInterval(sendNotification, intervalMs);
+      } catch(e) { console.warn("SW not found, notifications limited to active window."); }
     }
 
-    // ===================== NORMAL EDITOR MODE =====================
     async function startLiveNotifications() {
-      isSilentMode = false;
       const status = document.getElementById('status');
       const stopBtn = document.getElementById('stopBtn');
-      const intervalInput = document.getElementById('interval');
-      let intervalMs = parseInt(intervalInput.value) || 5000;
-      if (intervalMs < 1) intervalMs = 1;
+      let intervalMs = parseInt(document.getElementById('interval').value) || 10000;
 
       if (Notification.permission !== 'granted') {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
-          status.innerHTML = '❌ Please allow notifications';
+          status.innerHTML = 'PERMISSION_DENIED';
           return;
         }
       }
 
-      await navigator.serviceWorker.register('sw.js');
-      await navigator.serviceWorker.ready;
+      try {
+        await navigator.serviceWorker.register('sw.js');
+        await navigator.serviceWorker.ready;
+      } catch(e) {}
 
-      status.innerHTML = `✅ Sending every ${intervalMs}ms...`;
-
-      await sendNotification(); // first one
+      status.innerHTML = `ACTIVE // ${intervalMs}ms CYCLE`;
+      await sendNotification();
       if (intervalId) clearInterval(intervalId);
       intervalId = setInterval(sendNotification, intervalMs);
 
-      stopBtn.classList.remove('hidden');
+      stopBtn.classList.add('visible');
     }
 
     function stopNotifications() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-      const stopBtn = document.getElementById('stopBtn');
-      if (stopBtn) stopBtn.classList.add('hidden');
-      const status = document.getElementById('status');
-      if (status) status.innerHTML = '⏹️ Stopped';
+      if (intervalId) clearInterval(intervalId);
+      document.getElementById('stopBtn').classList.remove('visible');
+      document.getElementById('status').innerHTML = 'ENGINE_OFFLINE';
     }
 
     function generateShareableLink() {
-      if (isSilentMode) return;
-
       const config = {
-        title: (document.getElementById('title').value || '').trim(),
-        body: (document.getElementById('body').value || '').trim(),
-        url: (document.getElementById('url').value || '').trim(),
-        interval: parseInt(document.getElementById('interval').value) || 5000
+        title: document.getElementById('title').value.trim(),
+        body: document.getElementById('body').value.trim(),
+        url: document.getElementById('url').value.trim(),
+        interval: document.getElementById('interval').value
       };
 
-      const jsonStr = JSON.stringify(config);
-      const base64 = btoa(encodeURIComponent(jsonStr));
-
-      // Clean base URL (removes any existing ?config)
+      const base64 = btoa(encodeURIComponent(JSON.stringify(config)));
       const baseUrl = window.location.href.split('?')[0];
       const shareUrl = `${baseUrl}?config=${base64}`;
 
-      const resultDiv = document.getElementById('shareResult');
-      const input = document.getElementById('shareUrlInput');
-      input.value = shareUrl;
-      resultDiv.classList.remove('hidden');
+      document.getElementById('shareUrlInput').value = shareUrl;
+      document.getElementById('shareResult').classList.add('visible');
     }
 
     function copyShareLink() {
       const input = document.getElementById('shareUrlInput');
-      if (!input) return;
-      navigator.clipboard.writeText(input.value).then(() => {
-        const btn = document.querySelector('#shareResult button');
-        const originalText = btn.textContent;
-        btn.textContent = '✅ Copied!';
-        setTimeout(() => { btn.textContent = originalText; }, 2000);
-      });
-    }
-
-    // Auto-register service worker for normal mode
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
+      input.select();
+      document.execCommand('copy');
+      const btn = document.querySelector('#shareResult .btn-primary');
+      btn.textContent = 'Copied';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
     }
   </script>
 </body>
