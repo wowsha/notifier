@@ -12,7 +12,7 @@
 <body class="min-h-screen text-white flex items-center justify-center">
   <div class="max-w-md w-full mx-auto bg-slate-900 rounded-3xl shadow-2xl p-8">
     <h1 class="text-4xl font-bold text-center mb-2">📢 Custom Live Notifier</h1>
-    <p class="text-center text-slate-400 mb-8">Edit text • Click opens your website • Every 5s</p>
+    <p class="text-center text-slate-400 mb-8">Edit everything • Click opens your website</p>
 
     <div class="space-y-6">
       <div>
@@ -31,6 +31,13 @@
         <label class="block text-sm font-medium mb-2">Website to open on click</label>
         <input id="url" type="text" value="https://example.com" 
                class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium mb-2">Interval between notifications (milliseconds)</label>
+        <input id="interval" type="number" value="5000" min="1" step="1"
+               class="w-full bg-slate-800 rounded-2xl px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <p class="text-xs text-slate-500 mt-1">1 = 1ms • 1000 = 1 second • 189298982 = ~2 days</p>
       </div>
 
       <button onclick="startLiveNotifications()" 
@@ -68,11 +75,16 @@
     async function startLiveNotifications() {
       const status = document.getElementById('status');
       const stopBtn = document.getElementById('stopBtn');
+      const intervalInput = document.getElementById('interval');
+      let intervalMs = parseInt(intervalInput.value) || 5000;
+
+      // Force minimum 1ms as requested
+      if (intervalMs < 1) intervalMs = 1;
 
       if (Notification.permission !== 'granted') {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
-          status.innerHTML = '❌ Please allow notifications in your browser';
+          status.innerHTML = '❌ Please allow notifications';
           return;
         }
       }
@@ -80,14 +92,14 @@
       await navigator.serviceWorker.register('sw.js');
       await navigator.serviceWorker.ready;
 
-      status.innerHTML = '✅ Service Worker ready • Sending every 5 seconds...';
+      status.innerHTML = `✅ Service Worker ready • Sending every ${intervalMs}ms...`;
 
-      // Send first one immediately
+      // First notification immediately
       await sendNotification();
 
-      // Then every 5 seconds (change 5000 to 1000 for every 1 second)
+      // Start repeating at exact user interval
       if (intervalId) clearInterval(intervalId);
-      intervalId = setInterval(sendNotification, 5000);
+      intervalId = setInterval(sendNotification, intervalMs);
 
       stopBtn.classList.remove('hidden');
     }
